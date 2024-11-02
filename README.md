@@ -94,3 +94,9 @@ def main():
 ```shell
 python main.py
 ```
+
+## 贡献
+<a href="https://github.com/ouyangyipeng/XiaoyuanKousuan/graphs/contributors">
+    <img src="https://contrib.rocks/image?repo=ouyangyipeng/XiaoyuanKousuan" />
+</a>
+
