@@ -96,6 +96,8 @@ python main.py
 ```
 
 ## 贡献
+[如何贡献](https://github.com/ouyangyipeng/XiaoyuanKousuan/blob/main/CONTRIBUTING.md)
+### 贡献者：
 <a href="https://github.com/ouyangyipeng/XiaoyuanKousuan/graphs/contributors">
     <img src="https://contrib.rocks/image?repo=ouyangyipeng/XiaoyuanKousuan" />
 </a>
