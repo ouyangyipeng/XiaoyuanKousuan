@@ -1,148 +1,86 @@
+import cv2
+import numpy as np
 import pyautogui
-from PIL import Image, ImageEnhance, ImageOps
+pyautogui.FAILSAFE = False
 import pytesseract
-import re
+import keyboard
+import sys
 import time
-import os
+import re
 
-# 设置 Tesseract 可执行文件的路径
-pytesseract.pytesseract.tesseract_cmd = os.getenv('TESSERACT_CMD', r'D:\Programm\tesseract\tesseract.exe')
+# 设置 Tesseract-OCR 的路径
+pytesseract.pytesseract.tesseract_cmd = r'C:\Tesseract-OCR\tesseract.exe'
 
-# 定义图像预处理函数
+# 跟踪状态的变量
+not_found_count = 0
+last_not_found_time = 0
+last_numbers = None
 
-def preprocess_image(image_path):
-    img = Image.open(image_path)
-    
-    # 将图片转换为灰度图像
-    img = img.convert('L')
-    
-    # 自动调整图片对比度
-    img = ImageOps.autocontrast(img)
-    
-    # 二值化图片
-    img = img.point(lambda p: p > 128 and 255)
-    
-    # 保存处理后的图像供检查
-    processed_image_path = "screenshot.png"
-    img.save(processed_image_path)
-    
-    return processed_image_path
-
-
-# 定义捕捉屏幕区域函数
-
-def capture_screen_region(x_start, y_start, width, height, save_path="screenshot.png"):
-    region = (x_start, y_start, width, height)
+def capture_area():
+    region = (500, 350, 600, 150)  # 截取区域的坐标和大小
     screenshot = pyautogui.screenshot(region=region)
-    screenshot.save(save_path)
-    save_path = preprocess_image(save_path)
-    return save_path
+    return np.array(screenshot)
 
-# 使用 OCR 识别数学题
+def recognize_numbers(image):
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    gray = cv2.medianBlur(gray, 3)  # 中值滤波
+    _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)  # Otsu二值化
+    text = pytesseract.image_to_string(thresh, config='--psm 6')
+    return [int(num) for num in re.findall(r'\d+', text)]  # 提取并转换所有数字
 
-def recognize_math_question(image_path):
-    custom_config = r'--psm 6 -c tessedit_char_whitelist=0123456789?'
-    result = pytesseract.image_to_string(Image.open(image_path), config=custom_config).strip()
-    
-    return result
-
-def compare_math_question(question):
-    # 处理有问号的情况，如 "14 ? 11"
-    match = re.match(r"(\d{1,2})\s*\?\s*(\d{1,2})", question)
-    
-    # 如果没有问号，尝试匹配两个数字的情况，如 "1411" 或 "14 11"
-    # if not match:
-    #     match = re.match(r"(\d{1,2})\s*(\d{1,2})", question)
-    
-    # 如果匹配到两个数字，继续处理
-    if match:
-        num1 = int(match.group(1))  # 获取第一个数字
-        num2 = int(match.group(2))  # 获取第二个数字
-
-        # 根据数字大小返回比较结果
-        if num1 > num2:
-            return '>'
-        elif num1 < num2:
-            return '<'
-        else:
-            return '='
-    
-    # 如果未能匹配任何有效的数学题，返回 None
-    return None
-
-def draw_result(result, x, y):
-    if result == '>':
-        # 绘制大于号 ">"
-        pyautogui.moveTo(x, y)
-        pyautogui.mouseDown(button='left')
-
-    # 右下角移动 (50, 50)
-        pyautogui.moveRel(50, 50, duration=0.01)
-
-    # 接着左下角移动 (-50, 50)
-        pyautogui.moveRel(-50, 50, duration=0.01)
-
-    # 松开鼠标左键
-        pyautogui.mouseUp(button='left')
-    
-    elif result == '<':
-        # 绘制小于号 "<"
-        pyautogui.moveTo(x, y)  # 移动到起始位置
-        pyautogui.mouseDown(button='left')
-
-    # 右下角移动 (50, 50)
-        pyautogui.moveRel(-50, 50, duration=0.01)
-
-    # 接着左下角移动 (-50, 50)
-        pyautogui.moveRel(50, 50, duration=0.01)
-
-    # 松开鼠标左键
-        pyautogui.mouseUp(button='left')
-    
-    elif result == '=':
-        # 绘制等于号 "="
-        pyautogui.moveTo(x, y)  # 移动到起始位置
-        pyautogui.dragRel(50, 0, duration=0.2)    # 绘制第一条水平线
-        pyautogui.moveTo(x, y + 20)  # 移动到下方
-        pyautogui.dragRel(50, 0, duration=0.2)    # 绘制第二条水平线
-        
-# 主程序流程
-def main():
-    x_start = 2810
-    y_start = 550
-    width = 700
-    height = 500
-
-    screenshot_path = "screenshot.png"
-
-    capture_screen_region(x_start, y_start, width, height, screenshot_path)
-
-    math_question = recognize_math_question(screenshot_path)
-    print(f"识别到的数学题：{math_question}")
-
-    result = compare_math_question(math_question)
-    
-    if result:
-        print(f"判断结果：{result}")
-        draw_x = 3000
-        draw_y = 1260
-        draw_result(result, draw_x, draw_y)
+def handle_insufficient_numbers():
+    global not_found_count, last_not_found_time
+    current_time = time.time()
+    if current_time - last_not_found_time <= 1:
+        not_found_count += 1
     else:
-        print("无法解析数学题")
+        not_found_count = 1
+    last_not_found_time = current_time
 
-if __name__ == "__main__":
-    start_time = time.time()  # 记录程序开始运行的时间
+    if not_found_count >= 25:
+        print("未找到足够的数字，准备重新开始...")
+
+def draw_comparison(numbers):
+    global not_found_count, last_numbers
+
+    if len(numbers) < 2:
+        handle_insufficient_numbers()
+        return
+
+    execute_drawing_logic(numbers)
+    not_found_count = 0
+    last_numbers = numbers
+
+def execute_drawing_logic(numbers):
+    first, second = numbers[:2]
+    print(f"识别的数字: {first}, {second}")
+
+    if first > second:
+        print(f"{first} > {second}")
+        draw_greater_than()
+    elif first < second:
+        print(f"{first} < {second}")
+        draw_less_than()
+
+def draw_greater_than():
+    pyautogui.press(".")  # 使用热键绘制大于号
+    print("绘制大于号")
+
+def draw_less_than():
+    pyautogui.press(",")  # 使用热键绘制小于号
+    print("绘制小于号")
+
+def main():
+    keyboard.add_hotkey('=', lambda: sys.exit("进程已结束"))
+
     try:
         while True:
-            main()  # 执行主函数
-            time.sleep(0.5)  # 每次循环后等待 0.5 秒
-            
-            elapsed_time = time.time() - start_time
-            if elapsed_time > 100:  # 如果超过 25 秒，则停止程序
-                print("程序已自动运行 25 秒，停止运行")
-                break  # 跳出循环，终止程序
+            image = capture_area()
+            numbers = recognize_numbers(image)
+            draw_comparison(numbers)
+            time.sleep(0.5)  # 可根据需要调整延迟
+    except SystemExit as e:
+        print(e)
 
-    except KeyboardInterrupt:
-        print("程序已手动终止")
-    except Exception as e:
-        print(f"发生错误：{e}")
+if __name__ == "__main__":
+    main()  # 启动主程序
